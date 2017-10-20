@@ -1,0 +1,350 @@
+<!DOCTYPE HTML>
+<!-
+Pong touch demo by Eyal Shalev.
+Meant to be an engaging interactive screen saver,
+to encourage users to interact with the touch screen.
+->
+<html>
+<head>
+    <style>
+        body {
+            margin: 0px;
+            padding: 0px;
+        }
+    </style>
+</head>
+<body onresize="resizeCanvas()" >
+<canvas id="myCanvas" width="578" height="200" style="border:0; display:block; margin: 0; padding: 0"></canvas>
+<script>
+    var gameSize;
+    function resizeCanvas() {
+        if (context.canvas.width != window.innerWidth) {
+            context.canvas.width = window.innerWidth;
+        }
+        if (context.canvas.height != window.innerHeight) {
+            context.canvas.height = window.innerHeight;
+        }
+        var x = context.canvas.width;
+        var y = context.canvas.height;
+        gameSize = new MathVector([x, y]).normalizeScreenCoordinates();
+
+    };
+
+    function clearCanvas() {
+        var x = context.canvas.width;
+        var y = context.canvas.height;
+        context.fillStyle = "black";
+        context.fillRect(0, 0, x, y, context.canvas.height);
+    }
+
+    function getMousePos(canvas, evt) {
+        var rect = canvas.getBoundingClientRect();
+        return {
+            x: evt.clientX - rect.left,
+            y: evt.clientY - rect.top
+        };
+    }
+    var canvas = document.getElementById('myCanvas');
+    var context = canvas.getContext('2d');
+    resizeCanvas();
+
+    canvas.addEventListener('mousemove', function (evt) {
+        processTouch(evt.clientX, evt.clientY);
+    }, false);
+
+    canvas.addEventListener('click', function (evt) {
+        processTouch(evt.clientX, evt.clientY);
+    }, false);
+
+    canvas.addEventListener('touchstart',handleTouches , false);
+    canvas.addEventListener('touchmove',handleTouches , false);
+
+    function handleTouches (evt) {
+        evt.preventDefault();
+        var touches = evt.touches;
+        for (var i = 0; i < touches.length; i++) {
+            var x = touches[i].pageX;
+            var y = touches[i].pageY;
+            console.log("x:" + x + "  y:y")
+            processTouch(x, y);
+        }
+    }
+
+
+
+    function getScreenScaleFactor() {
+        return 1 / context.canvas.height
+    }
+
+
+    function drawCircle(center, radius, color) {
+        //convert to pixel locations
+        var realCoords = center.deNormalizeVector();
+        var realRadius = new MathVector([radius]).deNormalizeVector().p[0];
+        context.beginPath();
+        context.arc(realCoords.p[0], realCoords.p[1], realRadius, 0, 2 * Math.PI, false);
+        context.lineWidth = 5;
+        context.strokeStyle = color || '#ffffff';
+        context.stroke();
+
+    }
+
+    /**
+     * Quick helper for math functions
+     * @param p
+     */
+    function MathVector(p) {
+        this.p = p.slice();
+
+        this.multiply = function (scalar) {
+            var product = []
+            this.p.forEach(function (p) {
+                product.push(p * scalar)
+            });
+            return new MathVector(product);
+        };
+
+        this.set = function (vector) {
+            this.p = vector.p.slice()
+        };
+
+        this.add = function (vector) {
+            var sum = this.p.slice(0);
+            for (var i = 0; i < vector.p.length; i++) {
+                sum[i] += vector.p[i];
+            }
+            return new MathVector(sum);
+        };
+
+        this.sub = function (vector) {
+            return this.add(vector.multiply(-1));
+        };
+
+        this.deNormalizeVector = function () {
+            var factor = getScreenScaleFactor();
+            return this.multiply(1 / getScreenScaleFactor())
+        };
+
+        this.length = function () {
+            var sum = 0.0;
+            this.p.forEach(function (p) {
+                sum += p * p;
+            });
+            return Math.sqrt(sum);
+        };
+
+        this.distanceTo = function (vector) {
+            return this.sub(vector).length();
+        }
+
+        this.normalize = function () {
+            return this.multiply(1 / this.length());
+        };
+
+        this.normalizeScreenCoordinates = function () {
+            return this.multiply(getScreenScaleFactor())
+        };
+    }
+
+    function getTimeMillis() {
+        var d = new Date();
+        return d.getTime();
+    }
+
+    var playerPositions;
+    var aiPlayerControl;
+    var playerTargets;
+    var playerSize = 0.1;
+    var ball = {
+        position: null,
+        direction: null,
+        velocity: null,
+        //how much velocity to add with each hit:
+        addVelocity: 0.04,
+        size: 0.02
+    }
+    var playerVelocity;
+    var lastTimeMillis = getTimeMillis();
+    //on screen particles
+    var particles = [];
+    var deltaTime = 0;
+    var gameOver;
+
+    function startNewGame() {
+        clearCanvas();
+        //set starting positions to oposing sides of the screen
+        playerPositions = [new MathVector([0, 0.5]), new MathVector([gameSize.p[0], 0.5])];
+        playerTargets = [new MathVector([0, 0.5]), new MathVector([gameSize.p[0], 0.5])];
+        //place ball in the middle of the screen
+        ball.position = new MathVector([gameSize.p[0] / 2, 0.5]);
+        ball.velocity = .1;
+        playerVelocity = ball.velocity * 4;
+        ball.direction = new MathVector([1, 1]);
+        //All players controlled by ai until someone touches the screen
+        aiPlayerControl = [true, true]
+        gameOver = false;
+
+    }
+
+    var PRACTICALLY_ZERO = 0.0001;
+    /**
+     * Game logic and drawing goes here:
+     */
+    function onFrame() {
+        //calculate how much time has passed since the last frame:
+        var newTimeMs = getTimeMillis();
+        deltaTime = (newTimeMs - lastTimeMillis) / 1000;
+        if (deltaTime > .1) {
+            deltaTime = .1
+        }
+        lastTimeMillis = newTimeMs;
+
+        //colision detection with players:
+        playerPositions.forEach(function (player) {
+            if (ball.position.distanceTo(player) < playerSize + ball.size) {
+                //collision detected, turn the ball around:
+                ball.direction = ball.position.sub(player);
+                //handle player/ball overlap
+                if (ball.direction.length() < PRACTICALLY_ZERO) {
+                    ball.direction = new MathVector(0, 1);
+                }
+                ball.velocity += ball.addVelocity;
+            }
+        });
+
+        //handle ai
+        for (var i = 0; i < aiPlayerControl.length; i++) {
+            if (aiPlayerControl[i]) {
+                playerTargets[i].p[1] = ball.position.p[1] + playerSize * 0.7;
+            }
+        }
+        //move the players
+        for (var i = 0; i < playerPositions.length; i++) {
+            var player = playerPositions[i];
+            var target = playerTargets[i];
+            var direction = target.sub(player);
+            //check if target has been reached
+            if (direction.length() > PRACTICALLY_ZERO) {
+                var movement = direction.normalize().multiply(playerVelocity * deltaTime);
+                if (movement.length() > direction.length()) {
+                    movement = direction;
+                }
+                player.set(player.add(movement));
+            }
+        }
+
+
+        //colision detection with ceiling and floor:
+        if (ball.position.p[1] <= 0 || ball.position.p[1] >= gameSize.p[1]) {
+            //reverse axis hitting the wall
+            ball.direction.p[1] *= -1;
+            //give the ball a little push from the wall:
+            ball.position = ball.position.add(ball.direction.normalize().multiply(ball.size / 10));
+        }
+
+        //move the ball
+        ball.direction = ball.direction.normalize();
+        ball.position = ball.position.add(ball.direction.multiply(ball.velocity * deltaTime));
+
+        //detect victory on horizontal walls:
+        if (!gameOver) {
+            if (ball.position.p[0] <= 0 || ball.position.p[0] >= gameSize.p[0]) {
+                createExplosion(ball.position);
+                gameOver = true;
+                setTimeout(function () {
+                    startNewGame();
+                }, 3 * 1000);
+            }
+        }
+        //create particle behind ball:
+        createParticle(
+            ball.position.sub(ball.direction.multiply(ball.size * 1.8)).add(randomSpeed(ball.size)),
+            ball.direction.multiply(-ball.size * 10 * ball.velocity).add(randomSpeed(0.05)),
+            ball.size / 4,
+            0);
+
+        //draw everything:
+        clearCanvas();
+        playerPositions.forEach(function (player) {
+            drawCircle(player, playerSize, "white");
+        });
+        //draw the player's destinations:
+        playerTargets.forEach(function (target) {
+            drawCircle(target, ball.size / 4, "white");
+        });
+
+        //draw particles:
+        particles.forEach(function (particle) {
+            particle.doLogic();
+            drawCircle(particle.position, particle.size, "white");
+        });
+        //delete old particles:
+        while (particles.length && !particles[0].isAlive()) {
+            particles.shift();
+        }
+
+        //draw a line at half-court
+        context.beginPath()
+        var sizeInPixels = gameSize.deNormalizeVector();
+        context.moveTo(sizeInPixels.p[0] / 2, 0)
+        context.lineTo(sizeInPixels.p[0] / 2, sizeInPixels.p[1])
+        context.stroke();
+
+        drawCircle(ball.position, ball.size, "white");
+        //schedule the next frame
+        setTimeout(onFrame, 1000 / 50);
+    }
+
+    startNewGame();
+    onFrame();
+
+    function createParticle(position, velocity, size,gravity) {
+        if(gravity==undefined){
+            gravity=1;
+        }
+        var particle = {
+            position: new MathVector(position.p),
+            velocity: new MathVector(velocity.p),
+            size: size,
+            doLogic: function () {
+                this.position.set(this.position.add(this.velocity.multiply(deltaTime)));
+                this.size -= 0.01 * deltaTime;
+                if (this.size < 0) {
+                    this.size = 0;
+                }
+                //gravity:
+                this.velocity.p[1] += gravity * deltaTime
+            },
+            isAlive: function () {
+                return this.size > PRACTICALLY_ZERO;
+            }
+        }
+        particles.push(particle);
+    }
+    function randomSpeed(r) {
+        var velocity = new MathVector([r * (Math.random() * 2 - 1), r * (Math.random() * 2 - 1)])
+        return velocity;
+    }
+
+    function createExplosion(position) {
+        for (var i = 0; i < 50; i++) {
+            var velocity = randomSpeed(.4);
+            createParticle(position, velocity, ball.size / 2);
+        }
+    }
+
+
+    function processTouch(x, y) {
+        var normalizedCoordinates = new MathVector([x, y]).normalizeScreenCoordinates();
+        //move the right player based on which half of the screen is being touched
+        var playerToMove = normalizedCoordinates.p[0] < 0.5 * gameSize.p[0] ? 0 : 1;
+        playerTargets[playerToMove] = normalizedCoordinates;
+        //once a player touches the screen, there is no more ai
+        aiPlayerControl[playerToMove] = false;
+
+
+    }
+
+</script>
+</body>
+</html>
