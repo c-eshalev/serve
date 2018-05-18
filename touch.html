@@ -1,0 +1,66 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+    <style>
+        body {
+            margin: 0px;
+            padding: 0px;
+        }
+    </style>
+</head>
+<body onresize="resizeCanvas()">
+<canvas id="myCanvas" width="578" height="200" style="border:1px solid #000000;margin: 0px"></canvas>
+<script>
+    function getMousePos(canvas, evt) {
+        var rect = canvas.getBoundingClientRect();
+        return {
+            x: evt.clientX - rect.left,
+            y: evt.clientY - rect.top
+        };
+    }
+    var canvas = document.getElementById('myCanvas');
+    var context = canvas.getContext('2d');
+    resizeCanvas();
+
+    canvas.addEventListener('mousemove', function (evt) {
+        plot(evt.clientX, evt.clientY);
+    }, false);
+
+    canvas.addEventListener('click', function (evt) {
+        context.fillStyle="#FF0000"
+		plot(evt.clientX, evt.clientY,16);
+        context.fillStyle="#000000"
+    }, false);
+
+    canvas.addEventListener('touchmove', function (evt) {
+        evt.preventDefault();
+        var touches = evt.touches;
+        for (var i = 0; i < touches.length; i++) {
+            var x = touches[i].pageX;
+            var y = touches[i].pageY;
+            console.log("x:"+x +"  y:y")
+            plot(x, y);
+        }
+    }, false);
+
+    function resizeCanvas(){
+        if (context.canvas.width != window.innerWidth) {
+            context.canvas.width = window.innerWidth;
+        }
+        if (context.canvas.height != window.innerHeight) {
+            context.canvas.height = window.innerHeight;
+        }
+    }
+
+    function plot(x, y,size) {
+        size=size||4;
+		resizeCanvas();
+        var rect = canvas.getBoundingClientRect();
+        x -= rect.left;
+        y -= rect.top;
+        context.fillRect(x, y, size, size);
+    }
+
+</script>
+</body>
+</html>
